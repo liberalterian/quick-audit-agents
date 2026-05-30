@@ -1,0 +1,20 @@
+{
+  "name": "quick-audit-agent",
+  "version": "1.1.0",
+  "description": "The Quick Audit is a standalone system that takes a single inbound prospect submission, produces a Dennis-format Quick Audit PDF in the Local Service Spotlight palette, optionally qualifies the prospect against a downstream rubric (MVS by default), drafts the prospect cover note + a team alert in Gmail, and writes everything back to the Tracker — all autonomously.",
+  "author": {
+    "name": "Daniel Goodrich",
+    "email": "goodrich.claude@gmail.com"
+  },
+  "keywords": [
+    "quick-audit",
+    "seo",
+    "googe-business-profile",
+    "google-ads",
+    "meta-ads",
+    "digital-marketing",
+    "content-factory",
+    "blitzmetrics"
+  ],
+  "license": "MIT"
+}
