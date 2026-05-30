@@ -1,20 +1,19 @@
 {
-  "name": "quick-audit-agent",
-  "version": "1.1.0",
-  "description": "The Quick Audit is a standalone system that takes a single inbound prospect submission, produces a Dennis-format Quick Audit PDF in the Local Service Spotlight palette, optionally qualifies the prospect against a downstream rubric (MVS by default), drafts the prospect cover note + a team alert in Gmail, and writes everything back to the Tracker — all autonomously.",
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "quick-audit-system",
+  "displayName": "Quick Audit System",
+  "version": "0.4.0",
+  "description": "API-triggered Claude Routine plugin for the modular Quick Audit system. Orchestrates local-service prospect intake, enrichment, anchored-reasoning grading, Dennis-format report generation, styled PDF rendering, downstream qualification, Drive/Gmail routing, and Tracker writeback, with legacy quick-audit fallback support.",
   "author": {
-    "name": "Daniel Goodrich",
-    "email": "goodrich.claude@gmail.com"
+    "name": "Quick Audit Team"
   },
+  "license": "UNLICENSED",
   "keywords": [
     "quick-audit",
-    "seo",
-    "googe-business-profile",
-    "google-ads",
-    "meta-ads",
-    "digital-marketing",
-    "content-factory",
-    "blitzmetrics"
-  ],
-  "license": "MIT"
+    "claude-routine",
+    "local-seo",
+    "mcp",
+    "blitzmetrics",
+    "local-service-spotlight"
+  ]
 }
