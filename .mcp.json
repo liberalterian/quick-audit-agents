@@ -9,73 +9,27 @@
         "Authorization:${AHREFS_AUTH_HEADER}"
       ],
       "env": {
-        "AHREFS_AUTH_HEADER": "Bearer ${AHREFS_MCP_KEY}"
+        "AHREFS_AUTH_HEADER": "Bearer ${AHREFS_MCP_KEY:-}"
       },
       "alwaysLoad": true,
       "timeout": 600000
-    },
-    "google-gmail": {
-      "type": "http",
-      "url": "https://gmailmcp.googleapis.com/mcp/v1",
-      "oauth": {
-        "enabled": true,
-        "clientId": "${GOOGLE_OAUTH_CLIENT_ID}",
-        "clientSecret": "${GOOGLE_OAUTH_CLIENT_SECRET}",
-        "scopes": [
-          "https://www.googleapis.com/auth/gmail.readonly",
-          "https://www.googleapis.com/auth/gmail.compose"
-        ]
-      }
-    },
-    "gmail-drafts": {
-      "type": "http",
-      "url": "https://gmailmcp.googleapis.com/mcp/v1",
-      "oauth": {
-        "enabled": true,
-        "scopes": [
-          "https://www.googleapis.com/auth/gmail.compose"
-        ]
-      }
-    },
-    "google-drive": {
-      "type": "http",
-      "url": "https://drivemcp.googleapis.com/mcp/v1",
-      "oauth": {
-        "scopes": "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file"
-      },
-      "alwaysLoad": true,
-      "timeout": 600000
-    },
-    "google-people": {
-      "type": "http",
-      "url": "https://people.googleapis.com/mcp/v1",
-      "oauth": {
-        "scopes": "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/contacts.readonly"
-      },
-      "alwaysLoad": false,
-      "timeout": 300000
-    },
-    "google-maps-code-assist": {
-      "type": "http",
-      "url": "https://mapscodeassist.googleapis.com/mcp",
-      "alwaysLoad": false,
-      "timeout": 300000
     },
     "quick-audit-tools": {
       "type": "stdio",
-      "command": "python",
+      "command": "python3",
       "args": [
         "-m",
-        "mcp.quick_audit_tools.server"
+        "quick_audit_mcp.server"
       ],
       "env": {
-        "GOOGLE_OAUTH_CLIENT_SECRETS_FILE": "${GOOGLE_OAUTH_CLIENT_SECRETS_FILE}",
-        "GOOGLE_OAUTH_TOKEN_FILE": "${GOOGLE_OAUTH_TOKEN_FILE}",
-        "GOOGLE_SHEETS_SPREADSHEET_ID": "${GOOGLE_SHEETS_SPREADSHEET_ID}",
-        "GOOGLE_PLACES_API_KEY": "${GOOGLE_PLACES_API_KEY}",
-        "PAGESPEED_API_KEY": "${PAGESPEED_API_KEY}",
+        "GOOGLE_SERVICE_ACCOUNT_JSON": "${GOOGLE_SERVICE_ACCOUNT_JSON:-}",
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS:-}",
+        "GOOGLE_OAUTH_TOKEN_FILE": "${GOOGLE_OAUTH_TOKEN_FILE:-}",
+        "GOOGLE_SHEETS_SPREADSHEET_ID": "${GOOGLE_SHEETS_SPREADSHEET_ID:-}",
+        "GOOGLE_PLACES_API_KEY": "${GOOGLE_PLACES_API_KEY:-}",
+        "PAGESPEED_API_KEY": "${PAGESPEED_API_KEY:-}",
         "ENABLE_GMAIL_SEND": "false",
-        "QUICK_AUDIT_ALLOWED_SEND_DOMAINS": "${QUICK_AUDIT_ALLOWED_SEND_DOMAINS}",
+        "QUICK_AUDIT_ALLOWED_SEND_DOMAINS": "${QUICK_AUDIT_ALLOWED_SEND_DOMAINS:-}",
         "QUICK_AUDIT_MAX_SEND_RECIPIENTS": "5"
       }
     }

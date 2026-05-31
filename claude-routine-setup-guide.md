@@ -2,42 +2,44 @@
 
 ## Goal
 
-Create one API-triggered Claude Routine named `Quick Audit Runner`.
+Create one API-triggered Claude Routine named `Quick Audit Runner` that runs this repo unattended.
 
 ## Routine configuration
 
-- Repository: this repository.
-- Prompt: paste or reference `agents/quick-audit-orchestrator-agent.md`.
-- Trigger: API.
-- Environment: Python 3, `reportlab`, `curl`, `jq`, and network access to the public enrichment and Google/Ahrefs endpoints.
-- Connectors/MCP: approve/authenticate `.mcp.json` servers or configure equivalent Claude connectors in the Routine UI.
+- **Repository:** this repository (install the Claude GitHub App on it).
+- **Prompt (brief, dynamic):**
+  > Read CLAUDE.md and run the Quick Audit pipeline on the intake payload in the trigger `text` field. Follow all output rules; emit RUN COMPLETE.
+  Do NOT paste an agent file as the prompt — `CLAUDE.md` is auto-loaded and directs the orchestration.
+- **Trigger:** API.
+- **Cloud environment:**
+  - **Build/Setup Command:** `bash scripts/setup.sh` (installs the MCP deps + reportlab and runs the import smoke check).
+  - **Network access:** Trusted (verify `places.googleapis.com`, `pagespeedonline.googleapis.com`, Ahrefs reachable; widen to Custom/Full if blocked).
+  - **ENV variables:** service-account JSON (`GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS`), `GOOGLE_SHEETS_SPREADSHEET_ID`, `GOOGLE_PLACES_API_KEY`, `PAGESPEED_API_KEY`, `AHREFS_MCP_KEY`, `ENABLE_GMAIL_SEND=false`. See `references/integration-environment-reference.md`.
+- **Connectors:** enable the **Google Gmail** and **Google Drive** connectors; authenticate **Ahrefs**. Remove unused connectors.
 
-## API trigger request
+## API trigger request (official contract)
 
-The Routine fire endpoint expects an authenticated POST with the run-specific intake payload in the `text` field.
+POST to the per-routine `/fire` endpoint. The intake payload is a **stringified JSON in `text`**
+(the routine does not parse a structured `payload`). See `examples/sample-zapier-routine-request.md`.
 
 ```json
-{
-  "text": "{\"event-type\":\"quick-audit-intake\",\"submission-id\":\"qa-0001\",\"business-name\":\"Example Services\",\"website\":\"https://example.com\",\"primary-city\":\"Denver\",\"state\":\"CO\",\"annual-revenue-band\":\"$2M–5M\",\"contact-name\":\"Jane Owner\",\"contact-email\":\"jane@example.com\",\"contact-phone\":\"+13035550100\",\"tracker-row-id\":\"row-42\",\"partner-id\":\"default\"}"
-}
+{ "text": "{\"event-type\":\"quick-audit-intake\",\"submission-id\":\"qa-0001\", ...}" }
 ```
 
-## Required secret storage
+Headers: `Authorization: Bearer <token>`, `anthropic-beta: experimental-cc-routine-2026-04-01`,
+`anthropic-version: 2023-06-01`, `Content-Type: application/json`.
 
-Store these outside the repo:
+## Required secret storage (outside the repo)
 
-- Routine fire URL.
-- Routine bearer token.
-- Google OAuth credentials for Google Workspace MCP connectors.
-- Google Maps Platform API key for Places API.
-- Google Sheets writeback credentials.
-- Optional Ahrefs authentication handled through MCP OAuth/login.
+- Routine fire URL + bearer token.
+- Google **service-account** key JSON (shared with the Tracker spreadsheet + Drive folder).
+- Google Places + PageSpeed API keys; Ahrefs key.
 
 ## First-run validation
 
-1. Fire the Routine with `examples/sample-intake-payload.md` content.
-2. Confirm the Routine returns a session URL.
-3. Confirm Tracker row gets `routine-session-url`.
-4. Confirm artifact creation reaches Drive.
-5. Confirm Gmail draft creation works.
-6. Confirm no final audit contains Glass Half Full or per-pillar Revenue Translation sections.
+1. Fire with `examples/sample-intake-payload.md` content → routine returns a session URL.
+2. `health_check.auth_mode == service_account`; Ahrefs/Gmail/Drive connected.
+3. Audit markdown + PDF + Grading Notes + enrichment created; prospect **draft** with PDF attached.
+4. Tracker row shows complete statuses + the session URL.
+5. No final audit contains "Glass Half Full" or per-pillar "Revenue Translation".
+6. Read the run transcript — green status only means "no infra error", not task success.

@@ -1,61 +1,68 @@
 # Quick Audit System
 
-Production-oriented Claude Code / Claude Routine package for running the Quick Audit workflow.
+Production Claude Code / Claude Routine package for running the Quick Audit workflow — a six-pillar
+local-SEO audit for US local-service businesses in the Dennis Yu / BlitzMetrics (Local Service
+Spotlight) format. Originally built as the v1 Cowork-scheduled system (owner/stakeholder **Dan
+Pasker**); this package is the modular, cloud-deployable v2.
 
-## What this package does
+## What it does
 
-The system accepts a structured local-service prospect intake payload, enriches the business using public and connected data sources, grades the business across Dennis Yu's six-pillar Quick Audit format, creates the customer-facing audit markdown, renders the styled PDF, qualifies the prospect against the downstream MVS rubric, drafts or sends routing emails, uploads artifacts to Drive, and writes the final state back to the Tracker.
+Accepts a structured prospect intake payload → enriches the business (GBP/Places, website, PageSpeed,
+social, Ahrefs, brand SERP) → grades six pillars by anchored reasoning → writes the customer-facing
+audit markdown → renders the styled PDF → qualifies against the MVS rubric → drafts routing emails →
+uploads artifacts to Drive → writes final state to the Tracker.
 
 ## Production runtime
 
-The production runtime is an **API-triggered Claude Routine**. SPP or another intake source writes the Tracker row, then Zapier or the intake backend sends the payload to the Routine API trigger. The Routine runs in Anthropic-managed Claude Code cloud infrastructure and invokes the modular agents and skills in this repository.
+An **API-triggered Claude Routine**. SPP/intake writes the Tracker row; Zapier (or the intake backend)
+POSTs the payload to the routine `/fire` endpoint as a **stringified JSON in the `text` field**. The
+routine runs in Anthropic-managed cloud infrastructure, clones this repo, runs `scripts/setup.sh`,
+loads `CLAUDE.md`, and the main session acts as the orchestrator.
 
-## Critical implementation correction
+## Repository layout
 
-Claude Code plugin skills should use `SKILL.md` inside each skill directory. Earlier drafts used lowercase `skill.md`; this package corrects that. Keep the filename exactly `SKILL.md`.
+```
+CLAUDE.md                      # orchestrator directive (auto-loaded each run)
+.claude/skills/                # the 8 modular skills (auto-discovered)
+.claude/agents/                # the 4 agents (orchestrator, audit, qualification, routing)
+.claude-plugin/plugin.json     # plugin manifest (optional /plugin install path)
+.mcp.json                      # Ahrefs hosted MCP + local quick-audit-tools server
+scripts/setup.sh               # installs deps + import smoke (routine Build/Setup Command)
+quick_audit_mcp/               # local MCP server (Sheets, Places, PageSpeed, gated Gmail send)
+references/  references/source-docs/   # integration refs + the v1/v2 design docs (fidelity baseline)
+examples/  tests/  tests/golden/  tests/automated/   # samples + manual + automated + golden fixtures
+reports/                       # audit report, refactor plan, testing & deployment plan
+```
 
-## Directory map
-
-See `manifest.md` for the complete file inventory.
-
-## Primary components
-
-- `agents/quick-audit-orchestrator-agent.md` — Routine-level orchestrator.
-- `agents/quick-audit-agent.md` — Audit enrichment, grading, report generation, and PDF render coordination.
-- `agents/qualification-agent.md` — Applies downstream qualification rubric.
-- `agents/routing-agent.md` — Uploads artifacts, drafts/sends messages, and writes final Tracker state.
-- `skills/` — Modular skills for intake, enrichment, grading, report generation, PDF rendering, qualification, routing, and legacy fallback.
-- `tests/` — Deployment and regression tests.
-- `examples/` — Copy-ready sample payloads and expected records.
-- `references/` — Architecture and integration references, including MCP and direct API decisions.
-- `.mcp.json` — Project-scoped MCP configuration for verified remote MCP endpoints used by the system.
+See `MANIFEST.md` for the full inventory.
 
 ## Integration strategy
 
-The package uses verified remote MCP endpoints where they exist:
-
-- Ahrefs MCP for SEO and link data.
-- Google Workspace MCP servers for Gmail and Drive.
-- Google People MCP as an optional identity/contact helper.
-- Google Maps Code Assist MCP as a documentation helper, not as a Places data source.
-
-Google Sheets Tracker writeback and Google Places business lookup are not represented as official remote MCP servers in the verified Google Workspace MCP docs used for this package. For production, use direct APIs with scoped credentials or wire trusted internal MCP servers. See `references/mcp-configuration-guide.md`, `references/google-places-api-reference.md`, and `references/google-sheets-tracker-writeback-reference.md`.
+- **Ahrefs** — hosted MCP (`.mcp.json`).
+- **Gmail drafts + Google Drive** — official Google Workspace **connectors** enabled on the routine
+  (there are no public `gmailmcp`/`drivemcp` MCP endpoints).
+- **Sheets writeback, Google Places, PageSpeed, gated Gmail send** — the local `quick_audit_mcp`
+  server, using a **service account** (headless-safe; no browser OAuth in the cloud).
 
 ## Setup checklist
 
-1. Install or enable Claude Code on the web and create a Claude Routine.
-2. Add this repository to the Routine.
-3. Set the Routine prompt to `agents/quick-audit-orchestrator-agent.md`.
-4. Add the API trigger and store the Routine URL/token in Zapier or your intake backend.
-5. Approve/authenticate MCP servers from `.mcp.json` where used.
-6. Configure Google Maps Platform and Google Sheets API credentials for direct API calls.
-7. Configure environment variables listed in `references/integration-environment-reference.md`.
-8. Run the tests in `tests/` before processing live submissions.
+1. Create an API-triggered Claude Routine (Remote) and attach this repo.
+2. Routine prompt (brief): *"Read CLAUDE.md and run the Quick Audit pipeline on the intake payload in the trigger `text` field. Emit RUN COMPLETE."*
+3. Set the Build/Setup Command to `bash scripts/setup.sh`.
+4. Enable the Gmail + Drive connectors; authenticate Ahrefs.
+5. Add routine ENV vars (service-account JSON, spreadsheet ID, Places/PageSpeed/Ahrefs keys) — see
+   `references/integration-environment-reference.md`.
+6. Add the API trigger; store the fire URL + token in your intake backend.
+7. Run `tests/` (Groups A–E) per `reports/03-testing-and-deployment-plan.md` before live submissions.
 
 ## Non-negotiable output rules
 
-- The audit ends at the Glossary.
-- Do not add a Glass Half Full section.
-- Do not add per-pillar Revenue Translation paragraphs.
-- Every numeric assertion must trace to an enrichment signal, calibration anchor, or explicitly marked unavailable source.
-- The PDF renderer is the single source of truth for styled PDF presentation.
+- Audit ends at the Glossary (13 sections); no "Glass Half Full"; no per-pillar "Revenue Translation";
+  glossary = exactly 8 terms; every number traces to a logged source; projections are ranges.
+- The PDF renderer is the single source of truth for styling.
+
+## Reports
+
+`reports/01-audit-report.md` (quality audit), `reports/02-refactor-plan.md`, and
+`reports/03-testing-and-deployment-plan.md` (test usage, fidelity comparison vs. the original, and the
+step-by-step deployment guide).

@@ -6,71 +6,57 @@
 SPP or intake form
   -> Zapier or intake backend
   -> Google Sheet Tracker row
-  -> Claude Routine API trigger
-  -> quick-audit-orchestrator-agent
-      -> quick-audit-intake
-      -> quick-audit-agent
+  -> Claude Routine API trigger (/fire, payload in the `text` field)
+  -> main session loads CLAUDE.md and acts as quick-audit-orchestrator-agent
+      -> quick-audit-intake (skill)
+      -> quick-audit-agent (subagent)
           -> quick-audit-enrichment
           -> quick-audit-grading
           -> quick-audit-report
           -> quick-audit-pdf-render
-              -> scripts/render-audit-pdf.py
-      -> qualification-agent
+              -> .claude/skills/quick-audit-pdf-render/scripts/render-audit-pdf.py
+      -> qualification-agent (subagent)
           -> quick-audit-qualification
-      -> routing-agent
+      -> routing-agent (subagent)
           -> quick-audit-routing
-  -> Drive artifacts + Gmail drafts/sends + Tracker writeback
+  -> Drive artifacts + Gmail drafts + Tracker writeback
 ```
+
+Subagents cannot spawn subagents, so the orchestrator must run as the **main session** (via the
+routine prompt + `CLAUDE.md`). Each subagent runs its skills inline.
 
 ## Agent responsibilities
 
-### quick-audit-orchestrator-agent
-
-Owns run control, state transitions, validation, delegation, failure handling, and final run-complete output.
-
-### quick-audit-agent
-
-Owns enrichment, grading, audit synthesis, audit-spec JSON creation, and PDF render coordination.
-
-### qualification-agent
-
-Consumes the intake and enrichment record. Applies the downstream qualification rubric. Does not re-pull data and does not alter audit grades.
-
-### routing-agent
-
-Owns final delivery: Drive upload, Gmail draft/send, team alert routing, and Tracker writeback.
+- **quick-audit-orchestrator-agent** — run control, validation, delegation, failure handling, final RUN COMPLETE.
+- **quick-audit-agent** — enrichment, grading, audit synthesis, audit-spec JSON, PDF render coordination.
+- **qualification-agent** — applies the MVS rubric to the same enrichment record; does not re-pull or alter grades.
+- **routing-agent** — Drive upload, Gmail draft, conditional team alert, Tracker writeback.
 
 ## Skill responsibilities
 
-See `skills/skill-index.md`.
+See `.claude/skills/skill-index.md`.
 
 ## Artifact flow
 
 ```text
-intake-payload
-  -> run-context
-  -> enrichment-record
-  -> grading-notes
-  -> audit-markdown
-  -> audit-spec-json
-  -> audit-pdf
-  -> qualification-record
-  -> routing-record
-  -> final-tracker-state
+intake-payload -> run-context -> enrichment-record -> grading-notes -> audit-markdown
+  -> audit-spec-json -> audit-pdf -> qualification-record -> routing-record -> final-tracker-state
 ```
 
 ## Data source strategy
 
-- Ahrefs SEO data: Ahrefs MCP.
-- Gmail draft creation: Google Gmail MCP.
-- Drive file persistence: Google Drive MCP.
-- Google Places business lookup: direct Google Places API unless a trusted Places MCP is explicitly wired.
-- Tracker writeback: direct Google Sheets API unless a trusted Sheets MCP is explicitly wired.
-- Google Maps documentation assistance: Google Maps Code Assist MCP, docs only.
+- **Ahrefs SEO data** — Ahrefs hosted MCP (`.mcp.json`).
+- **Gmail draft creation** — Google Gmail **connector** (claude.ai connector on the routine).
+- **Drive file persistence** — Google Drive **connector**.
+- **Google Places business lookup** — local `quick-audit-tools` server (Places API, service-account/API key).
+- **Tracker writeback (Sheets)** — local `quick-audit-tools` server (Sheets API, service account).
+- **PageSpeed** — local `quick-audit-tools` server.
+
+(There are no public `gmailmcp`/`drivemcp` MCP endpoints; Gmail/Drive are connectors, not `.mcp.json` servers.)
 
 ## Failure principles
 
-- A missing optional data source does not block audit shipment.
-- Data unavailable must be called out in the relevant section and the Grading Notes file.
-- Do not fabricate competitor numbers, rankings, review counts, follower counts, projections, or CPC/CPL assumptions.
-- Do not silently fall back to the generic PDF skill; fix the JSON spec or renderer issue.
+- A missing optional data source does not block audit shipment — note "data unavailable" and continue.
+- Never fabricate competitor numbers, rankings, review/follower counts, projections, or CPC/CPL.
+- Do not fall back to a generic PDF skill; fix the JSON spec or renderer issue.
+- On any failure, still write a Tracker failure note.

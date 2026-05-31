@@ -2,26 +2,36 @@
 
 ## Purpose
 
-Ensure generated package paths avoid underscores.
+Keep authored content paths (skills, agents, references, examples, docs) in dash-case, **without**
+flagging the Python package — Python identifiers and modules MUST use underscores, so
+`quick_audit_mcp/**` and any `*.py` are explicitly exempt.
 
-## Preconditions
+## Common preconditions
 
-- Claude Routine exists or local Claude Code session is available.
-- Repository files are present.
-- Required credentials are configured for the test.
+See `tests/README.md#common-preconditions`.
 
 ## Steps
 
-1. Run `find . -name '*_*'`.
+1. Run, from the repo root:
+   ```bash
+   find . -name '*_*' \
+     -not -path './.git/*' \
+     -not -path './quick_audit_mcp/*' \
+     -not -path './.venv/*' \
+     -not -name '*.py' \
+     -not -name 'pytest.ini'
+   ```
 2. Inspect any results.
-3. Allow only external dependency cache paths outside repo, if any.
+3. The only expected `_` paths are the Python package (`quick_audit_mcp/`), `*.py` files, and the
+   imported v1 golden fixtures under `tests/golden/` (their original filenames are preserved on purpose).
 
 ## Pass criteria
 
-- No repository file or directory name contains `_`.
-- Python scripts use dash-case names.
+- No authored content file/dir (skills, agents, references, examples, top-level docs) contains `_`.
+- Python package paths and `*.py` files are allowed to (and must) use underscores.
+- `tests/golden/**` original v1 filenames are allowed (they reproduce the original artifacts verbatim).
 
 ## Fail criteria
 
-- Any repo path contains an underscore.
-
+- A skill/agent/reference/example/doc path uses an underscore.
+- A `.py` file or the `quick_audit_mcp/` package is renamed to dash-case (this breaks importability).

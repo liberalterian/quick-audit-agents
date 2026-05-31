@@ -1,0 +1,20 @@
+# Secrets / credentials — never commit
+.env
+.env.*
+secrets/
+*service-account*.json
+*-oauth-client*.json
+*-oauth-token*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Local build / run artifacts
+# NOTE: committed golden fixtures live under tests/golden/ and are NOT ignored.
+/output/
+*.local.pdf
