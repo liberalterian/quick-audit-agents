@@ -1,0 +1,18 @@
+[project]
+name = "quick-audit-mcp"
+version = "2.1.0"
+description = "Local MCP wrapper for Quick Audit Tracker Sheets writes, gated Gmail send, Google Places, and PageSpeed Insights."
+requires-python = ">=3.10"
+dependencies = [
+  "mcp>=1.9.0",
+  "httpx>=0.27.0",
+  "pydantic>=2.7.0",
+  "python-dotenv>=1.0.1",
+  "google-api-python-client>=2.130.0",
+  "google-auth>=2.29.0",
+  "google-auth-oauthlib>=1.2.0"
+]
+
+# Pytest configuration lives in the repo-root pytest.ini so that
+# `import quick_audit_mcp.server` resolves with the repo root on sys.path
+# (the same way the routine launches the server via `python -m quick_audit_mcp.server`).

@@ -2,54 +2,30 @@
 
 ## Verified configuration facts
 
-Claude Code supports project-scoped MCP server configuration in `.mcp.json`. Project-scoped servers are designed to be checked into version control and require approval before use. HTTP remote servers should use `type: "http"` and `url`. Claude Code supports environment variable expansion in `.mcp.json` for fields such as `command`, `args`, `env`, `url`, and `headers`.
+Claude Code supports project-scoped MCP servers in `.mcp.json` (checked into version control, approved
+before use). HTTP servers use `type: "http"` + `url`. `oauth.scopes` is a **space-separated string**
+(not a JSON array); there is no documented `oauth.enabled` field. Env-var expansion is supported in
+`command`, `args`, `env`, `url`, `headers` (use `${VAR:-default}` so an unset var doesn't fail parsing).
 
-## Servers included in `.mcp.json`
+## Servers in this repo's `.mcp.json`
 
-### Ahrefs
+### Ahrefs (hosted MCP)
+- Launched via `npx mcp-remote https://api.ahrefs.com/mcp/mcp` with a bearer header from `AHREFS_MCP_KEY`.
+- Purpose: DR, referring domains, keywords, competitors. `alwaysLoad: true`.
 
-- Endpoint: `https://api.ahrefs.com/mcp/mcp`
-- Transport: HTTP
-- Purpose: SEO, backlinks, keyword, and competitor data.
-- Authentication: authenticate through the MCP flow after adding/approving the server.
+### quick-audit-tools (local stdio)
+- `python3 -m quick_audit_mcp.server` (package renamed from `mcp/` so it does not shadow the `mcp` SDK).
+- Tools: Sheets Tracker writeback, Places resolve/details, PageSpeed, gated Gmail send, `health_check`.
+- Auth: service account (cloud) / token / opt-in interactive (see `quick_audit_mcp/auth.py`).
 
-### Gmail
+## NOT in `.mcp.json` — use connectors / direct APIs
 
-- Endpoint: `https://gmailmcp.googleapis.com/mcp/v1`
-- Transport: HTTP
-- Purpose: search/read Gmail and create prospect/team drafts.
-- Scopes in config: Gmail readonly and compose.
-
-### Google Drive
-
-- Endpoint: `https://drivemcp.googleapis.com/mcp/v1`
-- Transport: HTTP
-- Purpose: create/read files and persist audit artifacts.
-- Scopes in config: Drive readonly and file access.
-
-### Google People
-
-- Endpoint: `https://people.googleapis.com/mcp/v1`
-- Transport: HTTP
-- Purpose: optional profile/contact verification.
-
-### Google Maps Code Assist
-
-- Endpoint: `https://mapscodeassist.googleapis.com/mcp`
-- Transport: HTTP
-- Purpose: Google Maps Platform documentation lookup only.
-- Important: this is not a Google Places business-data MCP.
-
-## Not included as verified remote MCP servers
-
-### Google Sheets
-
-The verified Google Workspace MCP documentation used for this package did not expose a Google Sheets remote MCP endpoint. For production Tracker writeback, use direct Google Sheets API credentials or a trusted internal Tracker MCP.
-
-### Google Places business data
-
-Google Maps Code Assist is documentation-focused. For business lookup and Place Details, use direct Google Places API or a trusted internal Places MCP.
+- **Gmail drafts** and **Google Drive** — official Google Workspace **connectors** enabled on the routine
+  (no `gmailmcp`/`drivemcp` googleapis MCP endpoints exist; the earlier invented URLs were removed).
+- **Google Sheets writes** — no official MCP; handled by the local server via the Sheets API.
+- **Google Places business data** — direct Places API via the local server.
 
 ## Security rule
 
-Never commit OAuth client secrets, API keys, service account JSON, or Routine bearer tokens.
+Never commit OAuth client secrets, API keys, service-account JSON, or routine bearer tokens
+(see the repo-root `.gitignore`).

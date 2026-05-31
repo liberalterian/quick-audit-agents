@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 This project follows a practical changelog format based on Keep a Changelog, with version entries organized by Added, Changed, Fixed, Security, and Known Limitations.
 
+## [2.1.0] - 2026-05-30 — Routine cloud-deployment refactor
+
+### Added
+
+* `CLAUDE.md` orchestrator directive (auto-loaded each run) so the routine prompt stays one line.
+* `scripts/setup.sh` — installs MCP deps + reportlab and runs a fail-fast import smoke check (routine Build/Setup Command).
+* `quick_audit_mcp/auth.py` — headless-safe Google auth (service account → token → opt-in interactive); never opens a browser in the cloud.
+* Root `pytest.ini`, root `.gitignore`.
+* `tests/golden/` — imported v1 fidelity artifacts (Apparel Junction grades + Dennis's reference PDF; Expert Services v2 format + grades) with a grade-vs-format split README.
+* `tests/automated/` — `test_server_imports`, `test_forbidden_sections`, `test_grades_golden`, `test_renderer_smoke`.
+* `tests/README.md` (common preconditions), `references/README.md`, `quick_audit_mcp/docs/architecture.md` (consolidations).
+* `reports/` — full audit report, refactor plan, and testing & deployment plan.
+
+### Changed
+
+* **Moved `skills/` → `.claude/skills/` and `agents/` → `.claude/agents/`** so a cloned-repo routine auto-discovers them.
+* **Renamed the MCP package `mcp/quick_audit_tools/` → `quick_audit_mcp/`** (was shadowing the `mcp` SDK); launch is now `python -m quick_audit_mcp.server`.
+* `.mcp.json` reduced to verified servers (Ahrefs hosted MCP + local `quick-audit-tools`); `oauth.scopes` normalized to space-separated strings; removed the undocumented `enabled` field and the duplicate Gmail server.
+* Gmail/Drive are now documented as Google Workspace **connectors**, not invented `gmailmcp`/`drivemcp` endpoints.
+* PDF-render skill uses `${CLAUDE_SKILL_DIR}`; grading/report skills now explicitly load their source docs; enrichment makes the live Knowledge-Panel check a required step.
+* Version unified to `2.1.0` (plugin + MCP package). Docs updated for the `.claude/` layout, full dependency set, and the official `text`-field fire contract.
+
+### Fixed
+
+* **C-1** MCP-package/SDK name collision (would break the stdio server at routine startup).
+* **C-2** Interactive OAuth replaced with headless service-account/token auth.
+* **C-3** Plugin-layout discovery gap (skills/agents now under `.claude/`).
+* **C-4** Setup script now installs the full dependency set, not just reportlab.
+* **H-1** `dash-case-path-regression-test` no longer flags the Python package / `*.py`.
+* **H-2** Dash-case env/shell variable names corrected to underscores (env reference, Places test, Zapier sample).
+* Config validator and `test_mcp_config.py` now assert config **shape** and read the repo-root `.mcp.json` (previously read a non-existent path).
+
+### Security
+
+* Gmail auto-send remains disabled by default; service-account least-privilege documented.
+* Root `.gitignore` excludes `.env`, `secrets/`, service-account/oauth JSON, caches.
+
+### Known Limitations
+
+* Live Google/Ahrefs calls still require valid cloud credentials; verify via the first-run cloud smoke test.
+* Local dependency install was network-restricted during this refactor; the renderer + stdlib/fidelity checks passed locally, while the full server-import + pytest run executes in the cloud via `setup.sh`.
+
+
 ## [2.0.5] - 2026-05-30
 
 ### Added

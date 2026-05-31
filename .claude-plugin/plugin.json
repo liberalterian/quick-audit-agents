@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "quick-audit-system",
   "displayName": "Quick Audit System",
-  "version": "0.4.0",
+  "version": "2.1.0",
   "description": "API-triggered Claude Routine plugin for the modular Quick Audit system. Orchestrates local-service prospect intake, enrichment, anchored-reasoning grading, Dennis-format report generation, styled PDF rendering, downstream qualification, Drive/Gmail routing, and Tracker writeback, with legacy quick-audit fallback support.",
   "author": {
     "name": "Quick Audit Team"

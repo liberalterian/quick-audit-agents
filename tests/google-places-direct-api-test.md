@@ -12,7 +12,7 @@ Verify direct Google Places lookup works because no verified official Places dat
 
 ## Steps
 
-1. Set `GOOGLE-MAPS-API-KEY`.
+1. Set `GOOGLE_PLACES_API_KEY` (the exact variable the server reads — there is no dash-case env var).
 2. Run a Text Search for a known test business.
 3. Use the returned place ID to call Place Details.
 4. Confirm field mask returns expected fields.

@@ -1,25 +1,25 @@
-# Google Workspace MCP Reference
+# Google Workspace Reference
 
-## Official remote endpoints used
+## How Gmail and Drive are accessed (connectors, not `.mcp.json` HTTP servers)
 
-- Gmail: `https://gmailmcp.googleapis.com/mcp/v1`
-- Google Drive: `https://drivemcp.googleapis.com/mcp/v1`
-- Google Calendar: `https://calendarmcp.googleapis.com/mcp/v1`
-- Google Chat: `https://chatmcp.googleapis.com/mcp/v1`
-- People API: `https://people.googleapis.com/mcp/v1`
+There are **no** public `gmailmcp.googleapis.com` / `drivemcp.googleapis.com` MCP endpoints. Earlier
+drafts invented those URLs; they have been removed from `.mcp.json`. In production, Gmail and Drive are
+the official **Google Workspace connectors** (claude.ai integrations) enabled on the Routine:
 
-This package includes Gmail, Drive, and People in `.mcp.json` because Quick Audit needs Gmail and Drive. Calendar and Chat are not required by the production path.
+- **Gmail** — create prospect cover-note + team-alert **drafts**.
+- **Google Drive** — create/upload/read the audit `.md`, `.pdf`, and grading-notes files.
+- **Google People** — optional contact/profile support (enable only if needed).
 
-## Production use
+Enable these under **Settings → Connectors** on claude.ai (or in the routine's Connectors tab) and
+complete OAuth there. Do not commit OAuth client secrets.
 
-Configure OAuth in Claude/Claude Code/Routine connectors. Do not commit OAuth client secrets.
+## What stays in `.mcp.json`
 
-## Required Quick Audit tools
-
-- Gmail: create draft email.
-- Drive: create/upload/read files.
-- People: optional contact/profile support.
+Only servers with a verified endpoint or local code:
+- **Ahrefs** — hosted MCP `https://api.ahrefs.com/mcp/mcp`.
+- **quick-audit-tools** — the local `quick_audit_mcp` server (Sheets writeback, Places, PageSpeed, gated Gmail send).
 
 ## Sheets note
 
-Google Sheets is not listed in the verified official remote MCP endpoint list used for this package. Use the Google Sheets API or a trusted internal Tracker MCP for Tracker updates.
+Google Sheets has no official Workspace MCP/connector for writes, so Tracker writeback uses the
+Google Sheets API via the local `quick-audit-tools` server (service-account auth).
