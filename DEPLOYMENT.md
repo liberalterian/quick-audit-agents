@@ -102,9 +102,48 @@ Remove any unused connectors.
 
 ---
 
-## Part 2 — Testing with curl (before updating the Zap)
+## Part 2 — GCP setup (required before first run)
 
-Validate the Routine end-to-end before wiring Zapier. This lets you confirm auth, MCP connectivity, and output format without touching the live Zap.
+The `quick-audit-tools` MCP server is **not a separately hosted service** — it's a Python package that lives in this repo and runs as a subprocess inside the Routine's container every time a run fires. No deployment step is needed for the server itself. What you do need to set up once in GCP is the service account and the APIs it calls.
+
+### 2.1 Enable Google Cloud APIs
+
+In your GCP project, enable the five APIs the server calls:
+
+```bash
+gcloud services enable \
+  sheets.googleapis.com \
+  places.googleapis.com \
+  pagespeedonline.googleapis.com \
+  gmail.googleapis.com \
+  drive.googleapis.com \
+  --project=YOUR_PROJECT_ID
+```
+
+### 2.2 Create a service account
+
+1. In GCP → IAM → Service Accounts, create a new service account (e.g. `quick-audit-runner@your-project.iam.gserviceaccount.com`).
+2. Download its JSON key.
+3. Paste the full JSON as the `GOOGLE_SERVICE_ACCOUNT_JSON` Routine ENV variable.
+
+### 2.3 Share the Tracker and Drive folder with the service account
+
+The service account authenticates via key — it does not go through a browser OAuth flow. For it to read and write your resources, you must explicitly share them with its email address:
+
+- **Quick Audit Tracker sheet** — share with the service account email as **Editor**
+- **Google Drive audit output folder** — share with the service account email as **Editor** (or **Content Manager** on a Shared Drive)
+
+### 2.4 Gmail send and domain-wide delegation (optional, deferred)
+
+The `send_gmail_message` tool in the MCP server is gated by `ENABLE_GMAIL_SEND=false` and should stay off until the draft-only flow is validated. When you're ready to enable it, the service account will need domain-wide delegation configured in Google Workspace Admin and `GOOGLE_IMPERSONATE_SUBJECT` set to the sending address. Don't configure DWD now — it's a separate step covered in Part 7 (Activating live send).
+
+---
+
+## Part 3 — Testing with curl (optional, before updating the Zap)
+
+Validate the Routine end-to-end before wiring Zapier. This lets you confirm auth, MCP connectivity, and output format without touching the live Zap. Skip this if you prefer to test through Zapier directly — the first-run checklist in Part 6 covers the same verification points.
+
+### Running the tests locally
 
 ```bash
 # Install deps (first time)
@@ -115,31 +154,63 @@ pytest tests/automated/
 
 # Validate MCP config
 python quick_audit_mcp/scripts/validate_mcp_config.py
+```
 
-# Fire the Routine directly with a test payload
-# Set these in your shell first:
-#   export QUICK_AUDIT_ROUTINE_FIRE_URL="https://api.anthropic.com/v1/claude_code/routines/<trig_id>/fire"
-#   export QUICK_AUDIT_ROUTINE_TOKEN="<token from Routine trigger page>"
+### Firing the Routine directly
+
+Set these in your shell before running the curl command:
+
+```bash
+export QUICK_AUDIT_ROUTINE_FIRE_URL="https://api.anthropic.com/v1/claude_code/routines/<trig_id>/fire"
+export QUICK_AUDIT_ROUTINE_TOKEN="<token from Routine trigger page>"
+```
+
+The `text` field must be a **single-line stringified JSON string** — no real newlines inside the value, and all inner double-quotes escaped with `\"`. The easiest way to build it is to write the payload as normal JSON first, then collapse it to one line:
+
+**Step 1 — your payload (normal JSON, for reference):**
+
+```json
+{
+  "event-type": "quick-audit-intake",
+  "submission-id": "qa-test-0001",
+  "business-name": "Expert Services",
+  "website": "https://expertservicesutah.com",
+  "primary-city": "Orem",
+  "state": "UT",
+  "annual-revenue-band": "$2M-5M",
+  "contact-name": "Test Owner",
+  "contact-email": "test@example.com",
+  "contact-phone": "+13855550100",
+  "tracker-row-id": "test-row-001",
+  "partner-id": "default"
+}
+```
+
+**Step 2 — collapse and escape it, then drop it into the curl body:**
+
+```bash
 curl -X POST "$QUICK_AUDIT_ROUTINE_FIRE_URL" \
   -H "Authorization: Bearer $QUICK_AUDIT_ROUTINE_TOKEN" \
   -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
   -H "anthropic-version: 2023-06-01" \
   -H "Content-Type: application/json" \
-  -d '{"text": "..."}'
+  -d '{"text": "{\"event-type\":\"quick-audit-intake\",\"submission-id\":\"qa-test-0001\",\"business-name\":\"Expert Services\",\"website\":\"https://expertservicesutah.com\",\"primary-city\":\"Orem\",\"state\":\"UT\",\"annual-revenue-band\":\"$2M-5M\",\"contact-name\":\"Test Owner\",\"contact-email\":\"test@example.com\",\"contact-phone\":\"+13855550100\",\"tracker-row-id\":\"test-row-001\",\"partner-id\":\"default\"}"}'
 ```
 
-Use `examples/apparel-junction-intake.md` or `examples/expert-services-intake.md` as your test payload content. See the full first-run validation checklist in Part 4 for what to verify after each test fire.
+The outer single quotes wrap the whole `-d` value so the shell doesn't interpret anything inside. The inner double-quotes are escaped with `\"`. If you use a tool like `jq` you can automate the escaping: `jq -c '.' payload.json | jq -Rs '{"text": .}'` produces the correct body shape.
+
+See `examples/expert-services-intake.md` for the canonical golden test payload. A successful fire returns a JSON response with `session_id` and `session_url` — open the session URL to watch the run.
 
 ---
 
-## Part 3 — Zapier configuration
+## Part 4 — Zapier configuration
 
-### 3.1 Zap overview
+### 4.1 Zap overview
 
 **Trigger:** SPP form submission (Webhook or native SPP integration)  
 **Action:** HTTP POST to the Routine `/fire` endpoint
 
-### 3.2 Required secrets in Zapier
+### 4.2 Required secrets in Zapier
 
 Store both values as **Zapier Storage** or **Secret Manager** entries — do not hardcode in the Zap:
 
@@ -148,7 +219,7 @@ Store both values as **Zapier Storage** or **Secret Manager** entries — do not
 | `QUICK_AUDIT_ROUTINE_FIRE_URL` | `https://api.anthropic.com/v1/claude_code/routines/<trig_id>/fire` — copy from the Routine's API trigger page |
 | `QUICK_AUDIT_ROUTINE_TOKEN` | Bearer token shown on the same Routine trigger page |
 
-### 3.3 Zap action — HTTP POST (Webhooks by Zapier)
+### 4.3 Zap action — HTTP POST (Webhooks by Zapier)
 
 **Method:** POST  
 **URL:** `{{QUICK_AUDIT_ROUTINE_FIRE_URL}}`
@@ -172,7 +243,7 @@ Content-Type: application/json
 
 Map each `{{placeholder}}` to the corresponding SPP field in Zapier's field mapper. The `text` value must be a **stringified JSON string** — not a nested object. The Routine parses `text` verbatim.
 
-### 3.4 Field mapping (SPP → Zapier → payload)
+### 4.4 Field mapping (SPP → Zapier → payload)
 
 > **Before saving the Zap:** open the SPP service configuration and confirm each field name below matches the actual field key or label SPP sends in the webhook payload. SPP field names can vary between service configurations and the names below reflect the intended setup — verify them before going live.
 
@@ -190,11 +261,11 @@ Map each `{{placeholder}}` to the corresponding SPP field in Zapier's field mapp
 | `tracker-row-id` | Row ID if pre-written to Tracker; omit or use submission-id | Optional |
 | `partner-id` | `"default"` unless multi-tenant | Optional |
 
-### 3.5 Zap — store the session URL
+### 4.5 Zap — store the session URL
 
 After the fire succeeds, the response body includes `session_id` and `session_url`. Add a second Zap action to write these back to the Tracker row (Google Sheets → Update Row) so you can monitor the run.
 
-### 3.6 Revenue band values (must match exactly)
+### 4.6 Revenue band values (must match exactly)
 
 SPP select options must match the strings the Qualification Agent reads:
 
@@ -210,13 +281,13 @@ $10M+
 
 ---
 
-## Part 4 — Google Sheets Tracker setup
+## Part 5 — Google Sheets Tracker setup
 
-### 4.1 Create the tab
+### 5.1 Create the tab
 
 Add a tab named **`Audits`** to the Maps Visibility Master Sheet (or create a dedicated sheet). Set `GOOGLE_SHEETS_SPREADSHEET_ID` to that sheet's ID.
 
-### 4.2 Column schema
+### 5.2 Column schema
 
 | Column | Set by |
 |---|---|
@@ -245,13 +316,13 @@ Add a tab named **`Audits`** to the Maps Visibility Master Sheet (or create a de
 | Session URL | Zap writeback |
 | Notes | Manual |
 
-### 4.3 Share permissions
+### 5.3 Share permissions
 
 Grant the service account **Editor** access to the sheet and the Drive folder used for output.
 
 ---
 
-## Part 5 — First-run validation checklist
+## Part 6 — First-run validation checklist
 
 Run this after initial setup before turning on the production Zap.
 
@@ -271,7 +342,7 @@ Read the full run transcript. Green status means "no infra error" — it does no
 
 ---
 
-## Part 6 — Activating live send
+## Part 7 — Activating live send
 
 When you're ready to send to real prospects:
 
@@ -281,7 +352,7 @@ When you're ready to send to real prospects:
 
 ---
 
-## Part 7 — Operating cadence
+## Part 8 — Operating cadence
 
 | Cadence | Task |
 |---|---|
@@ -292,7 +363,7 @@ When you're ready to send to real prospects:
 
 ---
 
-## Part 8 — Failure handling
+## Part 9 — Failure handling
 
 | Failure | Behavior |
 |---|---|
@@ -304,7 +375,7 @@ When you're ready to send to real prospects:
 
 ---
 
-## Part 9 — Secret rotation
+## Part 10 — Secret rotation
 
 Each credential lives in exactly one place. Rotating means updating the value there — no code changes, no redeployment. The reason for rotating each one is different, so the cadence and trigger vary:
 
