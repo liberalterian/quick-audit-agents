@@ -70,45 +70,76 @@ SPP Form Submit
 
 | Variable | Description |
 |---|---|
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Full JSON of the service-account key, base64-encoded or raw string — auth.py reads it. Alternatively set `GOOGLE_APPLICATION_CREDENTIALS` to a mounted path. |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | ID of the Quick Audit Tracker Google Sheet |
-| `GOOGLE_PLACES_API_KEY` | Google Places API key |
-| `PAGESPEED_API_KEY` | PageSpeed Insights API key |
-| `AHREFS_MCP_KEY` | Ahrefs MCP bearer token |
-| `ENABLE_GMAIL_SEND` | **`false`** — keep draft-only until send is explicitly approved |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Full JSON string of the GCP service-account key. The local `quick-audit-tools` MCP server (`auth.py`) reads this to authenticate Sheets writeback, Places lookups, and PageSpeed calls. In cloud environments, paste the raw JSON value or base64-encode it depending on how your Routine's secret store handles multiline strings. Alternatively, set `GOOGLE_APPLICATION_CREDENTIALS` to a mounted file path if you prefer ADC-style auth. |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | The ID portion of the Quick Audit Tracker Google Sheet URL (`https://docs.google.com/spreadsheets/d/<ID>/edit`). The local MCP server writes all Tracker columns to this sheet. The service account must have Editor access. |
+| `GOOGLE_PLACES_API_KEY` | A Google Cloud API key with the **Places API (New)** enabled. Used by the local MCP server to resolve business name + city → Place ID and pull GBP details (category, claim status, review count, hours, phone). Restrict the key to the Places API and the Routine's egress IP range if possible. |
+| `PAGESPEED_API_KEY` | A Google Cloud API key with the **PageSpeed Insights API** enabled. Used by the local MCP server to fetch mobile performance score and Core Web Vitals for the prospect's homepage. Can share a GCP project with the Places key but should be a separate key for easier rotation and quota tracking. |
+| `AHREFS_MCP_KEY` | Bearer token for the Ahrefs hosted MCP (`https://api.ahrefs.com/mcp/mcp`). Passed via the `AHREFS_AUTH_HEADER` env var in `.mcp.json`. Used to pull domain rating, referring domains, organic keyword count, and estimated traffic during enrichment. |
+| `ENABLE_GMAIL_SEND` | Controls whether the gated Gmail send tool in the local MCP server will actually deliver email. Set to **`false`** to keep everything in Drafts until live send is explicitly approved (see Part 5). The Gmail connector still creates drafts regardless of this value — this flag gates only the send action. |
 
 **Optional ENV variables:**
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GOOGLE_IMPERSONATE_SUBJECT` | unset | Gmail send via domain-wide delegation |
-| `QUICK_AUDIT_TRACKER_APPEND_RANGE` | `Audits!A:Z` | Tracker tab + range |
-| `GOOGLE_DRIVE_AUDIT_FOLDER_ID` | unset | Drive folder for PDF + .md output |
-| `GOOGLE_DRIVE_SHARED_DRIVE_ID` | unset | Shared Drive ID if not My Drive |
-| `ENABLE_GMAIL_SEND` | `false` | Flip to `true` only after send approval |
+| `GOOGLE_IMPERSONATE_SUBJECT` | unset | Email address to impersonate when sending Gmail via domain-wide delegation. Only needed if the service account uses DWD rather than a standard OAuth flow. |
+| `QUICK_AUDIT_TRACKER_APPEND_RANGE` | `Audits!A:Z` | Sheet tab name and column range the MCP server appends to. Change this if you rename the Tracker tab. |
+| `GOOGLE_DRIVE_AUDIT_FOLDER_ID` | unset | Google Drive folder ID where the audit `.md` and `.pdf` are saved. If unset, files are saved to the authenticated account's root Drive. |
+| `GOOGLE_DRIVE_SHARED_DRIVE_ID` | unset | Shared Drive ID for the output folder. Required only if the target folder lives in a Shared Drive rather than My Drive. |
 
 > **Never set `ANTHROPIC_API_KEY` as an MCP env var.** It is a Routine-level runtime credential managed by Anthropic's infrastructure.
 
 ### 1.4 Connectors
 
-Enable all three in Routine settings → **Connectors**:
+Enable all of the following in Routine settings → **Connectors** and complete the OAuth flow for each. These are official Google Workspace connectors — they are not configured in `.mcp.json`.
 
-- **Google Gmail** — authenticate with the service account or OAuth flow  
-- **Google Drive** — same credential as Gmail  
-- **Ahrefs** — API key connector
+- **Google Gmail** — creates prospect cover-note drafts and team-alert drafts
+- **Google Drive** — uploads and reads audit `.md`, `.pdf`, and grading-notes files
+- **Google People** — optional contact/profile support; enable if the routing agent needs to look up contact records
+
+The local `quick-audit-tools` MCP server handles **Sheets writeback**, **Places lookups**, and **PageSpeed** directly via API — those do not need connectors.
 
 Remove any unused connectors.
 
 ---
 
-## Part 2 — Zapier configuration
+## Part 2 — Testing with curl (before updating the Zap)
 
-### 2.1 Zap overview
+Validate the Routine end-to-end before wiring Zapier. This lets you confirm auth, MCP connectivity, and output format without touching the live Zap.
+
+```bash
+# Install deps (first time)
+bash scripts/setup.sh
+
+# Run automated tests
+pytest tests/automated/
+
+# Validate MCP config
+python quick_audit_mcp/scripts/validate_mcp_config.py
+
+# Fire the Routine directly with a test payload
+# Set these in your shell first:
+#   export QUICK_AUDIT_ROUTINE_FIRE_URL="https://api.anthropic.com/v1/claude_code/routines/<trig_id>/fire"
+#   export QUICK_AUDIT_ROUTINE_TOKEN="<token from Routine trigger page>"
+curl -X POST "$QUICK_AUDIT_ROUTINE_FIRE_URL" \
+  -H "Authorization: Bearer $QUICK_AUDIT_ROUTINE_TOKEN" \
+  -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "..."}'
+```
+
+Use `examples/apparel-junction-intake.md` or `examples/expert-services-intake.md` as your test payload content. See the full first-run validation checklist in Part 4 for what to verify after each test fire.
+
+---
+
+## Part 3 — Zapier configuration
+
+### 3.1 Zap overview
 
 **Trigger:** SPP form submission (Webhook or native SPP integration)  
 **Action:** HTTP POST to the Routine `/fire` endpoint
 
-### 2.2 Required secrets in Zapier
+### 3.2 Required secrets in Zapier
 
 Store both values as **Zapier Storage** or **Secret Manager** entries — do not hardcode in the Zap:
 
@@ -117,7 +148,7 @@ Store both values as **Zapier Storage** or **Secret Manager** entries — do not
 | `QUICK_AUDIT_ROUTINE_FIRE_URL` | `https://api.anthropic.com/v1/claude_code/routines/<trig_id>/fire` — copy from the Routine's API trigger page |
 | `QUICK_AUDIT_ROUTINE_TOKEN` | Bearer token shown on the same Routine trigger page |
 
-### 2.3 Zap action — HTTP POST (Webhooks by Zapier)
+### 3.3 Zap action — HTTP POST (Webhooks by Zapier)
 
 **Method:** POST  
 **URL:** `{{QUICK_AUDIT_ROUTINE_FIRE_URL}}`
@@ -141,7 +172,9 @@ Content-Type: application/json
 
 Map each `{{placeholder}}` to the corresponding SPP field in Zapier's field mapper. The `text` value must be a **stringified JSON string** — not a nested object. The Routine parses `text` verbatim.
 
-### 2.4 Field mapping (SPP → Zapier → payload)
+### 3.4 Field mapping (SPP → Zapier → payload)
+
+> **Before saving the Zap:** open the SPP service configuration and confirm each field name below matches the actual field key or label SPP sends in the webhook payload. SPP field names can vary between service configurations and the names below reflect the intended setup — verify them before going live.
 
 | Payload key | SPP field | Required |
 |---|---|---|
@@ -157,11 +190,11 @@ Map each `{{placeholder}}` to the corresponding SPP field in Zapier's field mapp
 | `tracker-row-id` | Row ID if pre-written to Tracker; omit or use submission-id | Optional |
 | `partner-id` | `"default"` unless multi-tenant | Optional |
 
-### 2.5 Zap — store the session URL
+### 3.5 Zap — store the session URL
 
 After the fire succeeds, the response body includes `session_id` and `session_url`. Add a second Zap action to write these back to the Tracker row (Google Sheets → Update Row) so you can monitor the run.
 
-### 2.6 Revenue band values (must match exactly)
+### 3.6 Revenue band values (must match exactly)
 
 SPP select options must match the strings the Qualification Agent reads:
 
@@ -177,13 +210,13 @@ $10M+
 
 ---
 
-## Part 3 — Google Sheets Tracker setup
+## Part 4 — Google Sheets Tracker setup
 
-### 3.1 Create the tab
+### 4.1 Create the tab
 
 Add a tab named **`Audits`** to the Maps Visibility Master Sheet (or create a dedicated sheet). Set `GOOGLE_SHEETS_SPREADSHEET_ID` to that sheet's ID.
 
-### 3.2 Column schema
+### 4.2 Column schema
 
 | Column | Set by |
 |---|---|
@@ -212,13 +245,13 @@ Add a tab named **`Audits`** to the Maps Visibility Master Sheet (or create a de
 | Session URL | Zap writeback |
 | Notes | Manual |
 
-### 3.3 Share permissions
+### 4.3 Share permissions
 
 Grant the service account **Editor** access to the sheet and the Drive folder used for output.
 
 ---
 
-## Part 4 — First-run validation checklist
+## Part 5 — First-run validation checklist
 
 Run this after initial setup before turning on the production Zap.
 
@@ -238,7 +271,7 @@ Read the full run transcript. Green status means "no infra error" — it does no
 
 ---
 
-## Part 5 — Activating live send
+## Part 6 — Activating live send
 
 When you're ready to send to real prospects:
 
@@ -248,7 +281,7 @@ When you're ready to send to real prospects:
 
 ---
 
-## Part 6 — Operating cadence
+## Part 7 — Operating cadence
 
 | Cadence | Task |
 |---|---|
@@ -259,7 +292,7 @@ When you're ready to send to real prospects:
 
 ---
 
-## Part 7 — Failure handling
+## Part 8 — Failure handling
 
 | Failure | Behavior |
 |---|---|
@@ -271,40 +304,14 @@ When you're ready to send to real prospects:
 
 ---
 
-## Part 8 — Local development / testing
-
-```bash
-# Install deps
-bash scripts/setup.sh
-
-# Run automated tests
-pytest tests/automated/
-
-# Validate MCP config
-python quick_audit_mcp/scripts/validate_mcp_config.py
-
-# Manual fire (local curl)
-# Copy sample-zapier-routine-request.md and replace env vars
-curl -X POST "$QUICK_AUDIT_ROUTINE_FIRE_URL" \
-  -H "Authorization: Bearer $QUICK_AUDIT_ROUTINE_TOKEN" \
-  -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "..."}'
-```
-
-Use `examples/apparel-junction-intake.md` or `examples/expert-services-intake.md` as test payloads.
-
----
-
 ## Part 9 — Secret rotation
 
-Rotate these credentials independently — no code changes required, just update the values in their respective stores:
+Each credential lives in exactly one place. Rotating means updating the value there — no code changes, no redeployment. The reason for rotating each one is different, so the cadence and trigger vary:
 
-| Secret | Stored in | Rotation |
-|---|---|---|
-| `QUICK_AUDIT_ROUTINE_TOKEN` | Zapier secret store | Rotate in Routine → regenerate → update Zapier |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Routine ENV | Rotate key in GCP → update Routine ENV |
-| `GOOGLE_PLACES_API_KEY` | Routine ENV | Rotate in GCP Console |
-| `PAGESPEED_API_KEY` | Routine ENV | Rotate in GCP Console |
-| `AHREFS_MCP_KEY` | Routine ENV + Connector | Rotate in Ahrefs dashboard |
+| Secret | Stored in | How to rotate | Why / when to rotate |
+|---|---|---|---|
+| `QUICK_AUDIT_ROUTINE_TOKEN` | Zapier secret store | Regenerate in Routine → API trigger page, then update the Zapier storage value | Rotate if the token is exposed, if you off-board someone who had access to the Zap, or on a 90-day schedule. A new token is issued immediately; the old one stops working as soon as you save the new one. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Routine ENV | Create a new key in GCP → IAM → Service Accounts → Manage Keys, update the Routine ENV value, then delete the old key in GCP | Rotate if the key is exposed or if GCP policy requires periodic rotation. Sheets, Places, and PageSpeed all use this credential, so update before deleting the old key or runs will fail mid-audit. |
+| `GOOGLE_PLACES_API_KEY` | Routine ENV | Regenerate or create a new key in GCP Console → APIs & Services → Credentials, update Routine ENV | Rotate if the key appears in logs, is exposed in a client-side context, or if GCP sends an abuse alert. Places API keys are not scoped to a user — rotation is low-risk and fast. |
+| `PAGESPEED_API_KEY` | Routine ENV | Same as Places key above | Same triggers as Places. Can be rotated independently since it's a separate key. |
+| `AHREFS_MCP_KEY` | Routine ENV + Ahrefs Connector | Regenerate in Ahrefs dashboard → API keys, update both the Routine ENV value and the Connector credential in Routine settings | Rotate if the key is exposed or if an Ahrefs team member who held the key leaves. Both the ENV var and the Connector must be updated — the ENV feeds `.mcp.json` and the Connector is the fallback auth path. |
