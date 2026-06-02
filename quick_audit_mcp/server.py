@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Iterable
@@ -34,14 +35,15 @@ load_dotenv()
 
 mcp = FastMCP("quick-audit-tools")
 
-GOOGLE_OAUTH_SCOPES = [
+# Lowest practical scopes for the always-on Sheets/Drive work.
+BASE_OAUTH_SCOPES = [
     # Recommended lowest practical scope for specific spreadsheet/file access.
     "https://www.googleapis.com/auth/drive.file",
     # Needed by Sheets API writes against the Quick Audit Tracker.
     "https://www.googleapis.com/auth/spreadsheets",
-    # Needed only when ENABLE_GMAIL_SEND=true and auto-send is explicitly used.
-    "https://www.googleapis.com/auth/gmail.send",
 ]
+# Added only when ENABLE_GMAIL_SEND=true so Sheets/Places-only runs stay least-privilege.
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
 DEFAULT_PLACE_FIELDS = ",".join(
     [
@@ -94,6 +96,34 @@ def _split_csv(value: str | None) -> list[str]:
     return [item.strip().lower() for item in value.split(",") if item.strip()]
 
 
+def _oauth_scopes() -> list[str]:
+    """Scopes to request — gmail.send is added only when auto-send is enabled."""
+    scopes = list(BASE_OAUTH_SCOPES)
+    if _env_bool("ENABLE_GMAIL_SEND", default=False):
+        scopes.append(GMAIL_SEND_SCOPE)
+    return scopes
+
+
+def _redact_key(text: str) -> str:
+    """Mask any ``key=...`` query value so API keys never reach error strings/logs."""
+    return re.sub(r"([?&]key=)[^&\s]+", r"\1***", text)
+
+
+def _raise_for_status_redacted(response: httpx.Response) -> None:
+    """Like ``raise_for_status`` but strips API keys from the error message.
+
+    httpx embeds the full request URL (including any ``?key=`` query param) in
+    ``HTTPStatusError``; PageSpeed passes its key that way, so an un-redacted
+    error would leak the key to the MCP client and logs.
+    """
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise httpx.HTTPStatusError(
+            _redact_key(str(exc)), request=exc.request, response=exc.response
+        ) from None
+
+
 def _credentials():
     """Return Google credentials via the headless-safe loader (see auth.py).
 
@@ -102,7 +132,7 @@ def _credentials():
     OAuth is opt-in only and never runs in the cloud.
     """
 
-    return auth.get_credentials(GOOGLE_OAUTH_SCOPES)
+    return auth.get_credentials(_oauth_scopes())
 
 
 def _google_service(service_name: str, version: str):
@@ -116,14 +146,9 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _validate_recipients(recipients: Iterable[str]) -> list[str]:
+def _clean_recipients(recipients: Iterable[str]) -> list[str]:
+    """Trim, drop blanks, and enforce the send-domain allow-list (no count cap)."""
     clean = [r.strip() for r in recipients if r and r.strip()]
-    if not clean:
-        raise ValueError("At least one recipient is required.")
-
-    max_recipients = int(os.getenv("QUICK_AUDIT_MAX_SEND_RECIPIENTS", "5"))
-    if len(clean) > max_recipients:
-        raise ValueError(f"Recipient count {len(clean)} exceeds limit of {max_recipients}.")
 
     allowed_domains = _split_csv(os.getenv("QUICK_AUDIT_ALLOWED_SEND_DOMAINS"))
     if allowed_domains:
@@ -159,6 +184,13 @@ class SheetsUpdateInput(BaseModel):
     range_name: str = Field(..., description="A1 notation target range, e.g. Audits!A2:K2.")
     values: list[list[Any]] = Field(..., description="2D values array to write.")
     spreadsheet_id: str | None = Field(default=None)
+
+    @field_validator("values")
+    @classmethod
+    def values_must_have_rows(cls, value: list[list[Any]]) -> list[list[Any]]:
+        if not value:
+            raise ValueError("values must include at least one row")
+        return value
 
 
 class GmailSendInput(BaseModel):
@@ -275,9 +307,16 @@ def send_gmail_message(payload: GmailSendInput) -> dict[str, Any]:
             "Gmail auto-send is disabled. Set ENABLE_GMAIL_SEND=true only after QA and sender safeguards are approved."
         )
 
-    to = _validate_recipients(payload.to)
-    cc = _validate_recipients(payload.cc) if payload.cc else []
-    bcc = _validate_recipients(payload.bcc) if payload.bcc else []
+    to = _clean_recipients(payload.to)
+    cc = _clean_recipients(payload.cc)
+    bcc = _clean_recipients(payload.bcc)
+    if not to:
+        raise ValueError("At least one recipient is required.")
+
+    total = len(to) + len(cc) + len(bcc)
+    max_recipients = int(os.getenv("QUICK_AUDIT_MAX_SEND_RECIPIENTS", "5"))
+    if total > max_recipients:
+        raise ValueError(f"Recipient count {total} exceeds limit of {max_recipients}.")
 
     message = EmailMessage()
     message["To"] = ", ".join(to)
@@ -316,7 +355,7 @@ def resolve_business_place(payload: PlaceSearchInput) -> dict[str, Any]:
     }
     with httpx.Client(timeout=20.0) as client:
         response = client.post("https://places.googleapis.com/v1/places:searchText", headers=headers, json=body)
-        response.raise_for_status()
+        _raise_for_status_redacted(response)
         data = response.json()
 
     places = data.get("places", [])
@@ -341,7 +380,7 @@ def get_place_details(payload: PlaceDetailsInput) -> dict[str, Any]:
     url = f"https://places.googleapis.com/v1/places/{place_id}?{urlencode(params)}"
     with httpx.Client(timeout=20.0) as client:
         response = client.get(url, headers=headers)
-        response.raise_for_status()
+        _raise_for_status_redacted(response)
         return response.json()
 
 
@@ -359,7 +398,7 @@ def run_pagespeed_insights(payload: PageSpeedInput) -> dict[str, Any]:
     endpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
     with httpx.Client(timeout=60.0) as client:
         response = client.get(endpoint, params=params)
-        response.raise_for_status()
+        _raise_for_status_redacted(response)
         data = response.json()
 
     lighthouse = data.get("lighthouseResult", {})
@@ -422,4 +461,5 @@ def health_check() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    # Explicit stdio matches the `.mcp.json` "type": "stdio" launch contract.
+    mcp.run(transport="stdio")

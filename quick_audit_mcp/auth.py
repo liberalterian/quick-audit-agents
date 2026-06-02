@@ -85,7 +85,12 @@ def get_credentials(scopes: Sequence[str]):
             return creds
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            Path(token_file).write_text(creds.to_json(), encoding="utf-8")
+            # Best-effort cache write-back. In the cloud the token file may be a
+            # read-only secret mount; a failed write must not break valid creds.
+            try:
+                Path(token_file).write_text(creds.to_json(), encoding="utf-8")
+            except OSError:
+                pass
             return creds
         raise RuntimeError(
             f"Cached token at {token_file} is invalid and cannot be refreshed. "
